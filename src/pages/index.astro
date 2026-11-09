@@ -1,0 +1,39 @@
+---
+import GameCanvas from '../components/GameCanvas.astro';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Pitch 11</title>
+    <style is:global>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #0b0d10;
+        overflow: hidden;
+        font-family: system-ui, -apple-system, sans-serif;
+        color: #f2f4f7;
+      }
+      #game-root {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #game-root canvas {
+        display: block;
+        max-width: 100%;
+        max-height: 100%;
+        image-rendering: pixelated;
+      }
+    </style>
+  </head>
+  <body>
+    <GameCanvas />
+  </body>
+</html>

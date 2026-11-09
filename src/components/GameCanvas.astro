@@ -1,0 +1,15 @@
+---
+---
+
+<div id="game-root"></div>
+
+<script>
+  import { startGame } from '../game/core/Game';
+
+  const root = document.getElementById('game-root');
+  if (!root) {
+    throw new Error('game-root element not found');
+  }
+
+  startGame(root);
+</script>
