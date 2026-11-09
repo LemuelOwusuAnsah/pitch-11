@@ -9,10 +9,6 @@ export default defineConfig({
     assets: 'assets',
   },
   vite: {
-    define: {
-      'typeof CANVAS_RENDERER': JSON.stringify('boolean'),
-      'typeof WEBGL_RENDERER': JSON.stringify('boolean'),
-    },
     optimizeDeps: {
       include: ['phaser'],
     },
