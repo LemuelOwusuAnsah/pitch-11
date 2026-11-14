@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚽ Soccer Showdown</title>
+    <style>
+        * { box-sizing: border-box; user-select: none; }
+        html, body {
+            height: 100%;
+            margin: 0;
+            background: radial-gradient(circle at 50% 0%, #2b5e3b, #0d2a18 80%);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #f2ecd8;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            padding: 20px;
+        }
+        .hud {
+            width: 100%;
+            max-width: 900px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(10, 25, 15, 0.85);
+            border: 2px solid #b99b52;
+            border-radius: 60px;
+            padding: 10px 30px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5), inset 0 1px 3px rgba(255,255,255,0.15);
+            backdrop-filter: blur(4px);
+        }
+        .team {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            font-size: 1.8rem;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-shadow: 3px 3px 0 #00000070;
+        }
+        .team.blue { color: #87c7ff; }
+        .team.red { color: #ff8a8a; }
+        .score {
+            font-size: 2.4rem;
+            background: #151f18;
+            border-radius: 20px;
+            padding: 4px 22px;
+            border: 2px solid #b99b52;
+            box-shadow: inset 0 0 10px #00000080;
+            min-width: 90px;
+            text-align: center;
+            color: #ffeac2;
+        }
+        .timer {
+            font-size: 1.6rem;
+            font-weight: 700;
+            background: #0a150e;
+            padding: 6px 24px;
+            border-radius: 40px;
+            border: 2px solid #b99b52;
+            color: #fceabb;
+            letter-spacing: 3px;
+            font-variant-numeric: tabular-nums;
+        }
+        canvas {
+            display: block;
+            border-radius: 28px;
+            box-shadow: 0 0 0 4px #6e5a32, 0 0 0 8px #2d2316, 0 20px 30px rgba(0,0,0,0.7);
+            background: #2c7a3f;
+            cursor: none;
+            width: 900px;
+            height: 560px;
+        }
+        .controls {
+            display: flex;
+            gap: 30px;
+            font-size: 1.05rem;
+            color: #cfc49e;
+            background: #122117cc;
+            padding: 8px 30px;
+            border-radius: 50px;
+            border: 1px solid #b99b5280;
+        }
+        kbd {
+            background: #2f2a1c;
+            color: #ffeaaf;
+            padding: 4px 12px;
+            border-radius: 24px;
+            border: 1px solid #b99b52;
+            font-weight: 700;
+            margin: 0 3px;
+        }
+        .goal-flash {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            background: radial-gradient(circle, rgba(255,240,150,0.5) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 999;
+        }
+        .goal-flash.active {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+<div class="goal-flash" id="goalFlash"></div>
+<div class="container">
+    <div class="hud">
+        <div class="team blue">🔵 YOU <span class="score" id="scoreBlue">0</span></div>
+        <div class="timer" id="timerDisplay">02:00</div>
+        <div class="team red"><span class="score" id="scoreRed">0</span> CPU 🔴</div>
+    </div>
+    <canvas id="gameCanvas" width="900" height="560"></canvas>
+    <div class="controls">
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span>
+        <span><kbd>SPACE</kbd> kick (aim with mouse)</span>
+        <span><kbd>R</kbd> reset match</span>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreBlueEl = document.getElementById('scoreBlue');
+        const scoreRedEl = document.getElementById('scoreRed');
+        const timerEl = document.getElementById('timerDisplay');
+        const goalFlash = document.getElementById('goalFlash');
+
+        // ---------- CONSTANTS ----------
+        const W = 900, H = 560;
+        const GOAL_WIDTH = 150;
+        const GOAL_TOP = (H - GOAL_WIDTH) / 2;
+        const GOAL_BOTTOM = GOAL_TOP + GOAL_WIDTH;
+        const LEFT_GOAL_LINE = 24;
+        const RIGHT_GOAL_LINE = W - 24;
+        const MATCH_DURATION = 120; // 2 minutes in seconds
+
+        // ---------- STATE ----------
+        let blueScore = 0;
+        let redScore = 0;
+        let timeLeft = MATCH_DURATION;
+        let matchActive = true;
+        let lastTimestamp = 0;
+        let goalCooldown = 0; // prevents double-scoring on same frame
+
+        // mouse
+        let mouseX = W/2, mouseY = H/2;
+
+        // kick cooldown (prevents holding space from rapid kicking)
+        let kickReady = true;
+
+        // ---------- BALL ----------
+        const ball = {
+            x: W/2, y: H/2,
+            vx: 0, vy: 0,
+            r: 12,
+            friction: 0.988,
+            maxSpeed: 15,
+            lastTouched: null // 'blue' or 'red'
+        };
+
+        // ---------- BLUE PLAYER (human) ----------
+        const blue = {
+            x: 250, y: H/2,
+            r: 22,
+            speed: 5.0,
+            color: '#3b8ef0',
+            border: '#b8dcff'
+        };
+
+        // ---------- RED PLAYER (CPU) ----------
+        const red = {
+            x: 650, y: H/2,
+            r: 22,
+            speed: 3.4,
+            color: '#e04a4a',
+            border: '#ffb3b3'
+        };
+
+        // ---------- INPUT ----------
+        const keys = { w:false, a:false, s:false, d:false, space:false };
+
+        // ---------- RESET POSITIONS ----------
+        function resetPositions() {
+            ball.x = W/2; ball.y = H/2;
+            ball.vx = 0; ball.vy = 0;
+            ball.lastTouched = null;
+            blue.x = 250; blue.y = H/2;
+            red.x = 650; red.y = H/2;
+            goalCooldown = 0;
+        }
+
+        // ---------- FULL MATCH RESET ----------
+        function resetMatch() {
+            blueScore = 0;
+            redScore = 0;
+            timeLeft = MATCH_DURATION;
+            matchActive = true;
+            resetPositions();
+            updateScoreboard();
+            kickReady = true;
+        }
+
+        // ---------- SCORE UPDATE ----------
+        function updateScoreboard() {
+            scoreBlueEl.textContent = blueScore;
+            scoreRedEl.textContent = redScore;
+            const mins = Math.floor(timeLeft / 60);
+            const secs = Math.floor(timeLeft % 60);
+            timerEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        // ---------- GOAL CELEBRATION ----------
+        function flashGoal() {
+            goalFlash.classList.add('active');
+            setTimeout(() => goalFlash.classList.remove('active'), 220);
+        }
+
+        // ---------- SCORE FUNCTIONS ----------
+        function scoreForBlue() {
+            if (!matchActive || goalCooldown > 0) return;
+            blueScore++;
+            goalCooldown = 60;
+            flashGoal();
+            updateScoreboard();
+            resetPositions();
+        }
+
+        function scoreForRed() {
+            if (!matchActive || goalCooldown > 0) return;
+            redScore++;
+            goalCooldown = 60;
+            flashGoal();
+            updateScoreboard();
+            resetPositions();
+        }
+
+        // ---------- COLLISION: BALL vs PLAYER ----------
+        function ballPlayerCollision(player, isBlue) {
+            const dx = ball.x - player.x;
+            const dy = ball.y - player.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = ball.r + player.r;
+
+            if (dist < minDist && dist > 0.01) {
+                const angle = Math.atan2(dy, dx);
+                const overlap = minDist - dist;
+                // push ball out
+                ball.x += Math.cos(angle) * overlap * 1.02;
+                ball.y += Math.sin(angle) * overlap * 1.02;
+
+                // relative velocity reflection
+                const dot = ball.vx * Math.cos(angle) + ball.vy * Math.sin(angle);
+                if (dot < 0) {
+                    ball.vx -= 1.7 * dot * Math.cos(angle);
+                    ball.vy -= 1.7 * dot * Math.sin(angle);
+                }
+
+                // if ball is nearly still, give small nudge away from player
+                const sp = Math.hypot(ball.vx, ball.vy);
+                if (sp < 1.2) {
+                    const nudgeAngle = angle + (Math.random() - 0.5) * 0.6;
+                    const nudge = 2.0 + Math.random() * 1.5;
+                    ball.vx += Math.cos(nudgeAngle) * nudge;
+                    ball.vy += Math.sin(nudgeAngle) * nudge;
+                }
+
+                // influence from player movement (only blue gets this boost)
+                if (isBlue) {
+                    if (keys.w) ball.vy -= 0.6;
+                    if (keys.s) ball.vy += 0.6;
+                    if (keys.a) ball.vx -= 0.6;
+                    if (keys.d) ball.vx += 0.6;
+                }
+
+                // clamp ball speed
+                const newSp = Math.hypot(ball.vx, ball.vy);
+                if (newSp > ball.maxSpeed) {
+                    ball.vx = (ball.vx / newSp) * ball.maxSpeed;
+                    ball.vy = (ball.vy / newSp) * ball.maxSpeed;
+                }
+
+                ball.lastTouched = isBlue ? 'blue' : 'red';
+            }
+        }
+
+        // ---------- PLAYER KICK ----------
+        function tryKick() {
+            if (!matchActive || !kickReady) return;
+            const dx = mouseX - blue.x;
+            const dy = mouseY - blue.y;
+            const distToMouse = Math.hypot(dx, dy);
+            if (distToMouse < 0.1) return;
+
+            const dirX = dx / distToMouse;
+            const dirY = dy / distToMouse;
+
+            const ballDist = Math.hypot(ball.x - blue.x, ball.y - blue.y);
+            if (ballDist > 80) return; // too far
+
+            // power based on mouse distance (capped)
+            const powerFactor = Math.min(1, distToMouse / 280);
+            const power = 5.5 + powerFactor * 7.0;
+
+            ball.vx += dirX * power;
+            ball.vy += dirY * power;
+
+            // limit
+            const sp = Math.hypot(ball.vx, ball.vy);
+            if (sp > 16) {
+                ball.vx = (ball.vx / sp) * 16;
+                ball.vy = (ball.vy / sp) * 16;
+            }
+
+            ball.lastTouched = 'blue';
+            kickReady = false;
+            // cooldown resets in update loop after a short delay
+            setTimeout(() => { kickReady = true; }, 180);
+        }
+
+        // ---------- UPDATE GAME ----------
+        function update(dt) {
+            if (!matchActive) return;
+
+            // ----- TIMER -----
+            timeLeft -= dt;
+            if (timeLeft <= 0) {
+                timeLeft = 0;
+                matchActive = false;
+            }
+            // update timer display every frame (cheap)
+            const mins = Math.floor(timeLeft / 60);
+            const secs = Math.floor(timeLeft % 60);
+            timerEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
+            // cooldown decrement
+            if (goalCooldown > 0) goalCooldown--;
+
+            // ----- BLUE MOVEMENT (WASD) -----
+            let moveX = 0, moveY = 0;
+            if (keys.w) moveY -= 1;
+            if (keys.s) moveY += 1;
+            if (keys.a) moveX -= 1;
+            if (keys.d) moveX += 1;
+            if (moveX !== 0 || moveY !== 0) {
+                const len = Math.hypot(moveX, moveY);
+                moveX = (moveX / len) * blue.speed;
+                moveY = (moveY / len) * blue.speed;
+            }
+            blue.x = Math.min(W - blue.r - 10, Math.max(blue.r + 10, blue.x + moveX));
+            blue.y = Math.min(H - blue.r - 10, Math.max(blue.r + 10, blue.y + moveY));
+
+            // ----- RED AI (improved) -----
+            // Predict ball position slightly & move toward it
+            const predictX = ball.x + ball.vx * 6;
+            const predictY = ball.y + ball.vy * 6;
+
+            let dxRed = predictX - red.x;
+            let dyRed = predictY - red.y;
+            const distToBall = Math.hypot(dxRed, dyRed);
+
+            if (distToBall > 5) {
+                const angle = Math.atan2(dyRed, dxRed);
+                // add a bit of randomness to make less robotic
+                const randomOffset = (Math.random() - 0.5) * 0.3;
+                const moveAngle = angle + randomOffset;
+                // speed varies slightly
+                const step = red.speed * (0.85 + Math.random() * 0.3);
+                red.x += Math.cos(moveAngle) * step;
+                red.y += Math.sin(moveAngle) * step;
+            } else {
+                // if very close, wiggle to avoid perfect block
+                red.x += (Math.random() - 0.5) * 2.0;
+                red.y += (Math.random() - 0.5) * 2.0;
+            }
+
+            // keep red inside field
+            red.x = Math.min(W - red.r - 12, Math.max(red.r + 12, red.x));
+            red.y = Math.min(H - red.r - 12, Math.max(red.r + 12, red.y));
+
+            // ----- BALL PHYSICS -----
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+
+            // friction
+            ball.vx *= ball.friction;
+            ball.vy *= ball.friction;
+
+            // stop tiny
+            if (Math.abs(ball.vx) < 0.04) ball.vx = 0;
+            if (Math.abs(ball.vy) < 0.04) ball.vy = 0;
+
+            // clamp max speed
+            const ballSpeed = Math.hypot(ball.vx, ball.vy);
+            if (ballSpeed > ball.maxSpeed) {
+                ball.vx = (ball.vx / ballSpeed) * ball.maxSpeed;
+                ball.vy = (ball.vy / ballSpeed) * ball.maxSpeed;
+            }
+
+            // ----- WALL BOUNCE (top/bottom & left/right except goals) -----
+            if (ball.x - ball.r < 12) {
+                ball.x = 12 + ball.r;
+                ball.vx *= -0.65;
+            } else if (ball.x + ball.r > W - 12) {
+                ball.x = W - 12 - ball.r;
+                ball.vx *= -0.65;
+            }
+
+            if (ball.y - ball.r < 12) {
+                ball.y = 12 + ball.r;
+                ball.vy *= -0.65;
+            } else if (ball.y + ball.r > H - 12) {
+                ball.y = H - 12 - ball.r;
+                ball.vy *= -0.65;
+            }
+
+            // ----- PLAYER COLLISIONS -----
+            ballPlayerCollision(blue, true);
+            ballPlayerCollision(red, false);
+
+            // separate players if overlapping
+            const dxPlayers = blue.x - red.x;
+            const dyPlayers = blue.y - red.y;
+            const distPlayers = Math.hypot(dxPlayers, dyPlayers);
+            const minPlayerDist = blue.r + red.r;
+            if (distPlayers < minPlayerDist && distPlayers > 0.01) {
+                const angle = Math.atan2(dyPlayers, dxPlayers);
+                const overlap = minPlayerDist - distPlayers;
+                blue.x += Math.cos(angle) * overlap * 0.5;
+                blue.y += Math.sin(angle) * overlap * 0.5;
+                red.x -= Math.cos(angle) * overlap * 0.5;
+                red.y -= Math.sin(angle) * overlap * 0.5;
+            }
+
+            // ----- GOAL DETECTION -----
+            // Left goal (CPU scores) – ball enters left goal area
+            if (ball.x - ball.r < LEFT_GOAL_LINE && ball.y > GOAL_TOP && ball.y < GOAL_BOTTOM) {
+                if (goalCooldown === 0) scoreForRed();
+            }
+            // Right goal (Blue scores) – ball enters right goal area
+            else if (ball.x + ball.r > RIGHT_GOAL_LINE && ball.y > GOAL_TOP && ball.y < GOAL_BOTTOM) {
+                if (goalCooldown === 0) scoreForBlue();
+            }
+        }
+
+        // ---------- RENDERING ----------
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+
+            // ---- FIELD ----
+            // grass base
+            ctx.fillStyle = '#2e7d32';
+            ctx.fillRect(0, 0, W, H);
+
+            // mowed stripes
+            ctx.fillStyle = '#3d9547';
+            for (let i = 0; i < W; i += 70) {
+                ctx.fillRect(i, 0, 35, H);
+            }
+
+            // ---- PITCH MARKINGS ----
+            ctx.strokeStyle = '#f5f0d8';
+            ctx.lineWidth = 4;
+
+            // center circle
+            ctx.beginPath();
+            ctx.arc(W/2, H/2, 80, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // halfway line
+            ctx.beginPath();
+            ctx.moveTo(W/2, 40);
+            ctx.lineTo(W/2, H-40);
+            ctx.stroke();
+
+            // penalty boxes
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#f5f0d8';
+            // left penalty area
+            ctx.strokeRect(12, H/2 - 120, 110, 240);
+            // right penalty area
+            ctx.strokeRect(W-122, H/2 - 120, 110, 240);
+
+            // goal areas (small boxes)
+            ctx.strokeStyle = '#e8e0c0';
+            ctx.lineWidth = 2.5;
+            ctx.strokeRect(12, H/2 - 65, 55, 130);
+            ctx.strokeRect(W-67, H/2 - 65, 55, 130);
+
+            // ---- GOAL FRAMES & NETS ----
+            // Left goal (CPU's goal, player scores here)
+            ctx.fillStyle = 'rgba(255, 255, 240, 0.15)';
+            // goal net pattern (left)
+            ctx.strokeStyle = '#c4b998';
+            ctx.lineWidth = 1.8;
+            for (let y = GOAL_TOP; y <= GOAL_BOTTOM; y += 14) {
+                ctx.beginPath();
+                ctx.moveTo(12, y);
+                ctx.lineTo(38, y);
+                ctx.stroke();
+            }
+            // vertical net lines
+            for (let x = 12; x <= 38; x += 12) {
+                ctx.beginPath();
+                ctx.moveTo(x, GOAL_TOP);
+                ctx.lineTo(x, GOAL_BOTTOM);
+                ctx.stroke();
+            }
+
+            // Right goal (Player's goal, CPU scores here)
+            for (let y = GOAL_TOP; y <= GOAL_BOTTOM; y += 14) {
+                ctx.beginPath();
+                ctx.moveTo(W-38, y);
+                ctx.lineTo(W-12, y);
+                ctx.stroke();
+            }
+            for (let x = W-38; x <= W-12; x += 12) {
+                ctx.beginPath();
+                ctx.moveTo(x, GOAL_TOP);
+                ctx.lineTo(x, GOAL_BOTTOM);
+                ctx.stroke();
+            }
+
+            // goal posts (thick bars)
+            ctx.fillStyle = '#b99b52';
+            // left goal posts
+            ctx.fillRect(10, GOAL_TOP - 6, 16, 12);
+            ctx.fillRect(10, GOAL_BOTTOM - 6, 16, 12);
+            // right goal posts
+            ctx.fillRect(W-26, GOAL_TOP - 6, 16, 12);
+            ctx.fillRect(W-26, GOAL_BOTTOM - 6, 16, 12);
+
+            // ---- BALL ----
+            ctx.shadowColor = 'rgba(0,0,0,0.6)';
+            ctx.shadowBlur = 12;
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
+            ctx.fillStyle = '#fafafa';
+            ctx.fill();
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+
+            // ball pattern
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.r*0.55, 0, Math.PI*2);
+            ctx.fillStyle = '#2a2a2a';
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(ball.x - 4, ball.y - 3, 3.5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(ball.x + 5, ball.y - 2, 2.8, 0, Math.PI*2);
+            ctx.fill();
+
+            // ---- PLAYERS ----
+            // Blue player
+            ctx.shadowBlur = 14;
+            ctx.beginPath();
+            ctx.arc(blue.x, blue.y, blue.r, 0, Math.PI*2);
+            ctx.fillStyle = blue.color;
+            ctx.fill();
+            ctx.strokeStyle = blue.border;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Blue eye (aim toward mouse)
+            const blueAngle = Math.atan2(mouseY - blue.y, mouseX - blue.x);
+            ctx.beginPath();
+            ctx.arc(blue.x + Math.cos(blueAngle)*10, blue.y + Math.sin(blueAngle)*10, 6, 0, Math.PI*2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(blue.x + Math.cos(blueAngle)*12, blue.y + Math.sin(blueAngle)*12, 3, 0, Math.PI*2);
+            ctx.fillStyle = '#000000';
+            ctx.fill();
+
+            // Red player
+            ctx.beginPath();
+            ctx.arc(red.x, red.y, red.r, 0, Math.PI*2);
+            ctx.fillStyle = red.color;
+            ctx.fill();
+            ctx.strokeStyle = red.border;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Red eye (looks at ball)
+            const redAngle = Math.atan2(ball.y - red.y, ball.x - red.x);
+            ctx.beginPath();
+            ctx.arc(red.x + Math.cos(redAngle)*10, red.y + Math.sin(redAngle)*10, 6, 0, Math.PI*2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(red.x + Math.cos(redAngle)*12, red.y + Math.sin(redAngle)*12, 3, 0, Math.PI*2);
+            ctx.fillStyle = '#000000';
+            ctx.fill();
+
+            // reset shadow
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+
+            // ---- AIM CROSSHAIR ----
+            ctx.beginPath();
+            ctx.strokeStyle = '#fffde7';
+            ctx.lineWidth = 2.5;
+            ctx.moveTo(mouseX - 12, mouseY);
+            ctx.lineTo(mouseX - 5, mouseY);
+            ctx.moveTo(mouseX + 5, mouseY);
+            ctx.lineTo(mouseX + 12, mouseY);
+            ctx.moveTo(mouseX, mouseY - 12);
+            ctx.lineTo(mouseX, mouseY - 5);
+            ctx.moveTo(mouseX, mouseY + 5);
+            ctx.lineTo(mouseX, mouseY + 12);
+            ctx.stroke();
+
+            // ---- MATCH OVER MESSAGE ----
+            if (!matchActive) {
+                ctx.font = 'bold 48px "Segoe UI", sans-serif';
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(0, H/2-70, W, 140);
+                ctx.fillStyle = '#ffeec2';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                let msg = blueScore > redScore ? '🏆 YOU WIN! 🏆' :
+                          blueScore < redScore ? '😤 CPU WINS' : '🤝 DRAW';
+                ctx.fillText(msg, W/2, H/2 - 15);
+                ctx.font = '24px "Segoe UI", sans-serif';
+                ctx.fillStyle = '#e0d6b0';
+                ctx.fillText('Press R to play again', W/2, H/2 + 45);
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'alphabetic';
+            }
+        }
+
+        // ---------- GAME LOOP ----------
+        function loop(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const dt = Math.min(0.05, (timestamp - lastTimestamp) / 1000); // cap dt
+            lastTimestamp = timestamp;
+
+            update(dt);
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        // ---------- EVENT LISTENERS ----------
+        window.addEventListener('keydown', (e) => {
+            const k = e.key.toLowerCase();
+            if (k === 'w' || k === 'a' || k === 's' || k === 'd') {
+                keys[k] = true;
+                e.preventDefault();
+            }
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (!keys.space) {
+                    keys.space = true;
+                    tryKick();
+                }
+            }
+            if (k === 'r') {
+                resetMatch();
+                updateScoreboard();
+                e.preventDefault();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const k = e.key.toLowerCase();
+            if (k === 'w' || k === 'a' || k === 's' || k === 'd') {
+                keys[k] = false;
+                e.preventDefault();
+            }
+            if (e.code === 'Space') {
+                e.preventDefault();
+                keys.space = false;
+            }
+        });
+
+        // mouse aiming
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            mouseX = (e.clientX - rect.left) * scaleX;
+            mouseY = (e.clientY - rect.top) * scaleY;
+            // clamp
+            mouseX = Math.min(W, Math.max(0, mouseX));
+            mouseY = Math.min(H, Math.max(0, mouseY));
+        });
+
+        // prevent context menu
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+        // also allow kick on click
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) { // left click
+                tryKick();
+            }
+        });
+
+        // ---------- START ----------
+        resetMatch();
+        updateScoreboard();
+        requestAnimationFrame(loop);
+    })();
+</script>
+</body>
+</html>
