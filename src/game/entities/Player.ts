@@ -20,17 +20,9 @@ export class Player {
     public readonly team: Team,
     public readonly number: number
   ) {
+    const key = `player-${team}-tex`;
+    ensurePlayerTexture(scene, key, team);
     const r = PLAYER_RADIUS_PX;
-    const key = `player-${team}-${id}`;
-    const fillColor = team === 'home' ? GameConfig.colors.home : GameConfig.colors.away;
-
-    const g = scene.add.graphics();
-    g.fillStyle(fillColor, 1);
-    g.fillCircle(r, r, r);
-    g.lineStyle(2, 0x000000, 1);
-    g.strokeCircle(r, r, r);
-    g.generateTexture(key, r * 2, r * 2);
-    g.destroy();
 
     this.sprite = scene.matter.add.sprite(x, y, key);
     this.sprite.setCircle(r);
@@ -81,4 +73,28 @@ export class Player {
   public distanceTo(x: number, y: number): number {
     return Phaser.Math.Distance.Between(this.x, this.y, x, y);
   }
+}
+
+function ensurePlayerTexture(scene: Phaser.Scene, key: string, team: Team): void {
+  if (scene.textures.exists(key)) {
+    return;
+  }
+  const r = PLAYER_RADIUS_PX;
+  const size = r * 2;
+  const fill = team === 'home' ? '#1e88e5' : '#e53935';
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('2d context unavailable');
+  }
+  ctx.beginPath();
+  ctx.arc(r, r, r - 1, 0, Math.PI * 2);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#000000';
+  ctx.stroke();
+  scene.textures.addCanvas(key, canvas);
 }

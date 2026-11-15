@@ -2,22 +2,17 @@ import Phaser from 'phaser';
 import { GameConfig } from '../core/GameConfig';
 
 export const BALL_RADIUS_PX = 10;
+const BALL_TEXTURE_KEY = 'ball-tex';
 
 export class Ball {
   public readonly sprite: Phaser.Physics.Matter.Sprite;
   public readonly body: MatterJS.BodyType;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
+    ensureBallTexture(scene);
     const r = BALL_RADIUS_PX;
-    const g = scene.add.graphics();
-    g.fillStyle(GameConfig.colors.ball, 1);
-    g.fillCircle(r, r, r);
-    g.lineStyle(2, GameConfig.colors.ballOutline, 1);
-    g.strokeCircle(r, r, r);
-    g.generateTexture('ball-tex', r * 2, r * 2);
-    g.destroy();
 
-    this.sprite = scene.matter.add.sprite(x, y, 'ball-tex');
+    this.sprite = scene.matter.add.sprite(x, y, BALL_TEXTURE_KEY);
     this.sprite.setCircle(r);
     this.sprite.setFrictionAir(0.02);
     this.sprite.setFriction(0.01);
@@ -36,4 +31,27 @@ export class Ball {
     this.sprite.setVelocity(0, 0);
     this.sprite.setAngularVelocity(0);
   }
+}
+
+function ensureBallTexture(scene: Phaser.Scene): void {
+  if (scene.textures.exists(BALL_TEXTURE_KEY)) {
+    return;
+  }
+  const r = BALL_RADIUS_PX;
+  const size = r * 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('2d context unavailable');
+  }
+  ctx.beginPath();
+  ctx.arc(r, r, r - 1, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#111111';
+  ctx.stroke();
+  scene.textures.addCanvas(BALL_TEXTURE_KEY, canvas);
 }
