@@ -2,6 +2,12 @@ import Phaser from 'phaser';
 import { BootScene } from '../scenes/BootScene';
 import { MatchScene } from '../scenes/MatchScene';
 
+declare global {
+  interface Window {
+    __PHASER_GAME__?: Phaser.Game;
+  }
+}
+
 let instance: Phaser.Game | null = null;
 
 export function startGame(parent: HTMLElement): Phaser.Game {
@@ -34,6 +40,7 @@ export function startGame(parent: HTMLElement): Phaser.Game {
   };
 
   instance = new Phaser.Game(config);
+  window.__PHASER_GAME__ = instance;
   return instance;
 }
 

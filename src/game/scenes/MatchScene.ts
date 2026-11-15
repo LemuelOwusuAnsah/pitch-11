@@ -5,11 +5,19 @@ import { Player } from '../entities/Player';
 import { Goal } from '../entities/Goal';
 import { Input } from '../systems/Input';
 
+declare global {
+  interface Window {
+    __PHASER_GAME__?: Phaser.Game;
+  }
+}
+
 export class MatchScene extends Phaser.Scene {
   private ball!: Ball;
   private activePlayer!: Player;
   private inputSystem!: Input;
   private rightGoal!: Goal;
+  private kickoffX = 0;
+  private kickoffY = 0;
 
   constructor() {
     super(GameConfig.sceneKeys.match);
@@ -20,11 +28,13 @@ export class MatchScene extends Phaser.Scene {
 
     const cx = PitchWidthPx / 2;
     const cy = PitchHeightPx / 2;
+    this.kickoffX = cx - 60;
+    this.kickoffY = cy;
 
     this.rightGoal = new Goal(this, 'right', PitchWidthPx, PitchHeightPx);
 
     this.ball = new Ball(this, cx, cy);
-    this.activePlayer = new Player(this, cx - 60, cy, 'home-1', 'home', 1);
+    this.activePlayer = new Player(this, this.kickoffX, this.kickoffY, 'home-1', 'home', 1);
     this.activePlayer.setActive(true);
 
     this.inputSystem = new Input(this);
@@ -70,8 +80,8 @@ export class MatchScene extends Phaser.Scene {
     this.ball.update();
     this.activePlayer.update();
 
-    const bx = this.ball.x;
-    const by = this.ball.y;
+    const bx = this.ball.sprite.x;
+    const by = this.ball.sprite.y;
 
     if (this.rightGoal.checkBall(bx, by) || bx > PitchWidthPx + 100) {
       this.onGoal();
@@ -83,8 +93,11 @@ export class MatchScene extends Phaser.Scene {
     const cx = PitchWidthPx / 2;
     const cy = PitchHeightPx / 2;
     this.ball.reset(cx, cy);
-    this.activePlayer.sprite.setPosition(cx - 60, cy);
+
+    this.activePlayer.sprite.setPosition(this.kickoffX, this.kickoffY);
     this.activePlayer.sprite.setVelocity(0, 0);
+    this.activePlayer.sprite.setAngularVelocity(0);
+    this.activePlayer.update();
   }
 
   private drawPitch(): void {
