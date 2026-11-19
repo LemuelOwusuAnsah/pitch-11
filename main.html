@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>⚽ Soccer Duel · simple 2D game</title>
+    <title>⚽ Soccer Duel · enhanced 2D</title>
     <style>
         * {
             box-sizing: border-box;
@@ -21,9 +21,9 @@
         }
         .game-wrapper {
             background: #1e3b2a;
-            padding: 24px 24px 30px;
-            border-radius: 48px 48px 32px 32px;
-            box-shadow: 0 20px 30px rgba(0, 0, 0, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.2);
+            padding: 22px 22px 28px;
+            border-radius: 52px 52px 36px 36px;
+            box-shadow: 0 20px 30px rgba(0, 0, 0, 0.7), inset 0 2px 4px rgba(255, 255, 255, 0.2);
             border-bottom: 6px solid #0f2b1b;
         }
         canvas {
@@ -31,8 +31,8 @@
             margin: 0 auto;
             width: 800px;
             height: 500px;
-            border-radius: 24px;
-            box-shadow: inset 0 0 0 2px #c9b27c, inset 0 0 0 6px #6b4e2e, 0 12px 20px rgba(0, 0, 0, 0.5);
+            border-radius: 26px;
+            box-shadow: inset 0 0 0 2px #c9b27c, inset 0 0 0 6px #6b4e2e, 0 12px 22px rgba(0, 0, 0, 0.6);
             background-color: #3a7d44;
             cursor: none;
         }
@@ -40,7 +40,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin: 12px 12px 0;
+            margin: 14px 12px 0;
             color: #f5e9d8;
             font-weight: 700;
             text-shadow: 2px 2px 0 #0f2b1b, 4px 4px 0 rgba(0,0,0,0.3);
@@ -51,8 +51,8 @@
             align-items: center;
             gap: 12px;
             font-size: 1.9rem;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 6px 22px;
+            background: rgba(0, 0, 0, 0.35);
+            padding: 6px 24px;
             border-radius: 50px;
             backdrop-filter: blur(2px);
             border: 2px solid #ebd09c;
@@ -66,7 +66,7 @@
             font-size: 2.4rem;
             opacity: 0.9;
             background: #2d2216;
-            padding: 0 18px;
+            padding: 0 20px;
             border-radius: 60px;
             border: 2px solid #bba66b;
             line-height: 1.4;
@@ -74,26 +74,45 @@
         .instructions {
             display: flex;
             justify-content: center;
-            gap: 40px;
+            gap: 44px;
             color: #d9cfb0;
             font-weight: 500;
             font-size: 1.1rem;
             margin-top: 14px;
             text-shadow: 1px 1px 0 #0f2b1b;
             background: #1f3d2b;
-            padding: 8px 20px;
+            padding: 8px 24px;
             border-radius: 40px;
             border: 1px solid #7e9f7a;
         }
         .instructions kbd {
             background: #2e2b20;
             color: #ffeab3;
-            padding: 4px 12px;
+            padding: 4px 14px;
             border-radius: 30px;
             font-weight: bold;
             border: 1px solid #dbb86a;
             margin: 0 3px;
             font-size: 1rem;
+        }
+        .reset-btn {
+            background: #a57c4b;
+            border: none;
+            color: #fef7e6;
+            font-weight: bold;
+            font-size: 1.2rem;
+            padding: 8px 22px;
+            border-radius: 40px;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #4f351b, 0 6px 12px black;
+            transition: all 0.08s;
+            border: 1px solid #e9c88b;
+            letter-spacing: 1px;
+            margin-left: 20px;
+        }
+        .reset-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #4f351b, 0 6px 12px black;
         }
     </style>
 </head>
@@ -104,6 +123,7 @@
         <div class="team">⚽ YOU <span id="playerScore">0</span></div>
         <div class="divider">VS</div>
         <div class="team">CPU <span id="cpuScore">0</span> ⚽</div>
+        <button class="reset-btn" id="resetMatchBtn">⟲ NEW MATCH</button>
     </div>
     <div class="instructions">
         <div><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> move</div>
@@ -124,6 +144,8 @@
         // ---------- GAME STATE ----------
         let playerScore = 0;
         let cpuScore = 0;
+        let goalCooldown = 0;          // frames to wait after goal (avoids instant re-trigger)
+        const GOAL_COOLDOWN_FRAMES = 30;
 
         // Mouse position (for aiming kicks)
         let mouseX = W / 2;
@@ -136,8 +158,9 @@
             vx: 0,
             vy: 0,
             radius: 12,
-            friction: 0.985,
-            maxSpeed: 11
+            friction: 0.986,
+            maxSpeed: 11,
+            color: '#f5f5f5',
         };
 
         // ---------- PLAYER (controlled) ----------
@@ -145,7 +168,7 @@
             x: 200,
             y: H / 2,
             radius: 20,
-            speed: 4.8,
+            speed: 4.9,
             color: '#2d7be0',
             border: '#a0d0ff',
             kickPower: 7.5
@@ -156,7 +179,7 @@
             x: 600,
             y: H / 2,
             radius: 20,
-            speed: 3.2,
+            speed: 3.35,
             color: '#d64545',
             border: '#ffb0b0'
         };
@@ -166,9 +189,8 @@
         const goalTop = (H - goalWidth) / 2;
         const goalBottom = goalTop + goalWidth;
 
-        // goalposts (for visual and collision)
-        const leftGoalLineX = 18;          // ball must cross this to score for CPU (right side? careful)
-        const rightGoalLineX = W - 18;
+        const leftGoalLineX = 22;
+        const rightGoalLineX = W - 22;
 
         // ---------- INPUT ----------
         const keys = {
@@ -178,31 +200,31 @@
 
         // ---------- RESET POSITIONS (after goal) ----------
         function resetPositions(scoredBy) {
-            // Reset ball
             ball.x = W / 2;
             ball.y = H / 2;
             ball.vx = 0;
             ball.vy = 0;
 
-            // Player position
             player.x = 200;
             player.y = H / 2;
 
-            // CPU position
             cpu.x = 600;
             cpu.y = H / 2;
 
-            // small cooldown? not needed but fine
+            // give a little grace period after reset
+            goalCooldown = GOAL_COOLDOWN_FRAMES;
         }
 
         // ---------- SCORE & RESET ----------
         function scoreForPlayer() {
+            if (goalCooldown > 0) return;
             playerScore++;
             playerScoreSpan.textContent = playerScore;
             resetPositions('player');
         }
 
         function scoreForCpu() {
+            if (goalCooldown > 0) return;
             cpuScore++;
             cpuScoreSpan.textContent = cpuScore;
             resetPositions('cpu');
@@ -219,34 +241,32 @@
                 // push ball out
                 const angle = Math.atan2(dy, dx);
                 const overlap = minDist - dist;
-                ball.x += Math.cos(angle) * overlap * 1.05;
-                ball.y += Math.sin(angle) * overlap * 1.05;
+                ball.x += Math.cos(angle) * overlap * 1.08;
+                ball.y += Math.sin(angle) * overlap * 1.08;
 
                 // reflect velocity with energy
                 const speed = Math.hypot(ball.vx, ball.vy);
-                if (speed < 0.5 && isPlayer) {
-                    // if ball is almost still, give it a tiny nudge in direction of entity's facing (or random)
-                    const nudgeAngle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.5;
-                    const nudgeSpeed = 2.0 + Math.random() * 2;
+                if (speed < 0.6 && isPlayer) {
+                    // soft nudge if ball almost still
+                    const nudgeAngle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.6;
+                    const nudgeSpeed = 2.2 + Math.random() * 2.5;
                     ball.vx += Math.cos(nudgeAngle) * nudgeSpeed;
                     ball.vy += Math.sin(nudgeAngle) * nudgeSpeed;
                 } else {
-                    // soft bounce – more natural
+                    // reflect only if moving towards entity
                     const dot = ball.vx * Math.cos(angle) + ball.vy * Math.sin(angle);
-                    // only reflect if moving towards entity
                     if (dot < 0) {
-                        ball.vx -= 1.6 * dot * Math.cos(angle);
-                        ball.vy -= 1.6 * dot * Math.sin(angle);
+                        ball.vx -= 1.7 * dot * Math.cos(angle);
+                        ball.vy -= 1.7 * dot * Math.sin(angle);
                     }
                 }
 
-                // add some of player's movement influence (optional)
+                // player movement influence
                 if (isPlayer) {
-                    // subtle push in direction of movement (wasd)
-                    if (keys.w) ball.vy -= 0.4;
-                    if (keys.s) ball.vy += 0.4;
-                    if (keys.a) ball.vx -= 0.4;
-                    if (keys.d) ball.vx += 0.4;
+                    if (keys.w) ball.vy -= 0.5;
+                    if (keys.s) ball.vy += 0.5;
+                    if (keys.a) ball.vx -= 0.5;
+                    if (keys.d) ball.vx += 0.5;
                 }
 
                 // limit ball speed after collision
@@ -260,44 +280,46 @@
 
         // ---------- KICK (player action) ----------
         function playerKick() {
-            if (!keys.space) return; // just in case
+            if (!keys.space || goalCooldown > 0) return;
 
             const dx = mouseX - player.x;
             const dy = mouseY - player.y;
             const length = Math.hypot(dx, dy);
             if (length < 0.1) return;
 
-            // normalised direction
             const dirX = dx / length;
             const dirY = dy / length;
 
-            // distance between player and ball
             const ballDist = Math.hypot(ball.x - player.x, ball.y - player.y);
-            // if ball is close enough (within 70px), kick it
-            if (ballDist < 75) {
-                // kick power depends on distance to mouse (capped)
-                const distToMouse = Math.min(250, Math.hypot(mouseX - player.x, mouseY - player.y));
-                const power = 5.0 + (distToMouse / 250) * 6.0; // 5..11
+            if (ballDist < 80) {
+                const distToMouse = Math.min(260, Math.hypot(mouseX - player.x, mouseY - player.y));
+                const power = 5.5 + (distToMouse / 260) * 6.5; // 5.5..12
 
                 ball.vx += dirX * power;
                 ball.vy += dirY * power;
 
-                // limit ball speed
                 const sp = Math.hypot(ball.vx, ball.vy);
-                if (sp > 14) {
-                    ball.vx = (ball.vx / sp) * 14;
-                    ball.vy = (ball.vy / sp) * 14;
+                if (sp > 15) {
+                    ball.vx = (ball.vx / sp) * 15;
+                    ball.vy = (ball.vy / sp) * 15;
                 }
-
-                // tiny cooldown (visual feedback - not needed, but kick can be spammed)
-                // we'll just rely on spacebar state (keydown triggers one kick)
-                // but we want to avoid repeated kicks while holding space → use keydown event with flag
-                // handled in event listener
             }
         }
 
-        // ---------- UPDATE GAME (called every frame) ----------
+        // ---------- RESET MATCH ----------
+        function resetMatch() {
+            playerScore = 0;
+            cpuScore = 0;
+            playerScoreSpan.textContent = '0';
+            cpuScoreSpan.textContent = '0';
+            resetPositions('manual');
+        }
+
+        // ---------- UPDATE GAME ----------
         function update() {
+            // decrease goal cooldown
+            if (goalCooldown > 0) goalCooldown--;
+
             // ----- 1. PLAYER MOVEMENT (WASD) -----
             let moveX = 0, moveY = 0;
             if (keys.w) moveY -= 1;
@@ -311,52 +333,50 @@
                 moveY = (moveY / len) * player.speed;
             }
 
-            // apply movement with canvas boundaries
-            const nextPlayerX = player.x + moveX;
-            const nextPlayerY = player.y + moveY;
-            // keep player within field (but allow near goals)
-            player.x = Math.min(W - player.radius - 8, Math.max(player.radius + 8, nextPlayerX));
-            player.y = Math.min(H - player.radius - 8, Math.max(player.radius + 8, nextPlayerY));
+            player.x = Math.min(W - player.radius - 8, Math.max(player.radius + 8, player.x + moveX));
+            player.y = Math.min(H - player.radius - 8, Math.max(player.radius + 8, player.y + moveY));
 
-            // ----- 2. CPU AI (simple chasing with slight randomness) -----
-            // CPU tries to go toward ball, but avoids leaving goal too open
-            const cpuTargetX = ball.x;
-            const cpuTargetY = ball.y;
+            // ----- 2. CPU AI (smarter chasing + defensive positioning) -----
+            const ballToGoalX = (ball.x < W/2) ? ball.x : W - ball.x; // distance to nearest goal
+            const cpuDefensiveBias = 0.65; // how much CPU stays between ball and its own goal
 
-            let dxCpu = cpuTargetX - cpu.x;
-            let dyCpu = cpuTargetY - cpu.y;
-            const distToBall = Math.hypot(dxCpu, dyCpu);
+            // target: mix between ball and a defensive spot
+            const targetX = ball.x + (ball.x < cpu.x ? -20 : 20);
+            const targetY = ball.y + (ball.y > H/2 ? -15 : 15);
 
-            // AI: move toward ball, but not too aggressively; also react if ball is behind
-            if (distToBall > 10) {
+            let dxCpu = targetX - cpu.x;
+            let dyCpu = targetY - cpu.y;
+            const distToTarget = Math.hypot(dxCpu, dyCpu);
+
+            if (distToTarget > 12) {
                 const angle = Math.atan2(dyCpu, dxCpu);
-                // add a bit of randomness to make it less perfect
-                const randomOffset = (Math.random() - 0.5) * 0.25;
+                // add slight randomness and reaction delay
+                const randomOffset = (Math.random() - 0.5) * 0.35;
                 const moveAngle = angle + randomOffset;
-                const step = cpu.speed * (0.9 + Math.random() * 0.2);
+                const step = cpu.speed * (0.92 + Math.random() * 0.18);
                 cpu.x += Math.cos(moveAngle) * step;
                 cpu.y += Math.sin(moveAngle) * step;
             } else {
-                // if very close to ball, small wiggle to avoid stuck
-                cpu.x += (Math.random() - 0.5) * 1.0;
-                cpu.y += (Math.random() - 0.5) * 1.0;
+                // small wiggle to avoid perfect stillness
+                cpu.x += (Math.random() - 0.5) * 1.4;
+                cpu.y += (Math.random() - 0.5) * 1.4;
             }
 
-            // keep CPU within field (but not inside goal areas)
-            cpu.x = Math.min(W - cpu.radius - 12, Math.max(cpu.radius + 12, cpu.x));
-            cpu.y = Math.min(H - cpu.radius - 12, Math.max(cpu.radius + 12, cpu.y));
+            // keep CPU within field, but avoid own goal area (stay out of goal mouth)
+            cpu.x = Math.min(W - cpu.radius - 18, Math.max(cpu.radius + 18, cpu.x));
+            cpu.y = Math.min(H - cpu.radius - 16, Math.max(cpu.radius + 16, cpu.y));
 
             // ----- 3. BALL PHYSICS -----
             ball.x += ball.vx;
             ball.y += ball.vy;
 
-            // friction / air resistance
+            // friction
             ball.vx *= ball.friction;
             ball.vy *= ball.friction;
 
             // stop tiny movement
-            if (Math.abs(ball.vx) < 0.04) ball.vx = 0;
-            if (Math.abs(ball.vy) < 0.04) ball.vy = 0;
+            if (Math.abs(ball.vx) < 0.045) ball.vx = 0;
+            if (Math.abs(ball.vy) < 0.045) ball.vy = 0;
 
             // limit max ball speed
             const ballSpeed = Math.hypot(ball.vx, ball.vy);
@@ -368,25 +388,25 @@
             // ----- 4. WALL BOUNCE (top / bottom) -----
             if (ball.x - ball.radius < 8) {
                 ball.x = 8 + ball.radius;
-                ball.vx *= -0.7;
+                ball.vx *= -0.72;
             } else if (ball.x + ball.radius > W - 8) {
                 ball.x = W - 8 - ball.radius;
-                ball.vx *= -0.7;
+                ball.vx *= -0.72;
             }
 
             if (ball.y - ball.radius < 8) {
                 ball.y = 8 + ball.radius;
-                ball.vy *= -0.7;
+                ball.vy *= -0.72;
             } else if (ball.y + ball.radius > H - 8) {
                 ball.y = H - 8 - ball.radius;
-                ball.vy *= -0.7;
+                ball.vy *= -0.72;
             }
 
             // ----- 5. BALL COLLISIONS WITH PLAYERS -----
             handleBallCollision(player, true);
             handleBallCollision(cpu, false);
 
-            // extra: player and cpu shouldn't overlap (simple push apart)
+            // entity separation (player vs cpu)
             const dxEntities = player.x - cpu.x;
             const dyEntities = player.y - cpu.y;
             const distEntities = Math.hypot(dxEntities, dyEntities);
@@ -400,145 +420,133 @@
                 cpu.y -= Math.sin(angle) * overlap * 0.5;
             }
 
-            // ----- 6. GOAL DETECTION (only if ball not too high/low) -----
-            // Left goal (CPU scores) → ball crosses left goal line between posts
-            if (ball.x - ball.radius < leftGoalLineX && ball.y > goalTop && ball.y < goalBottom) {
-                scoreForCpu();
+            // ----- 6. GOAL DETECTION (with cooldown) -----
+            if (goalCooldown === 0) {
+                // Left goal (CPU scores)
+                if (ball.x - ball.radius < leftGoalLineX && ball.y > goalTop && ball.y < goalBottom) {
+                    scoreForCpu();
+                }
+                // Right goal (Player scores)
+                else if (ball.x + ball.radius > rightGoalLineX && ball.y > goalTop && ball.y < goalBottom) {
+                    scoreForPlayer();
+                }
             }
-            // Right goal (Player scores) → ball crosses right goal line between posts
-            else if (ball.x + ball.radius > rightGoalLineX && ball.y > goalTop && ball.y < goalBottom) {
-                scoreForPlayer();
-            }
-
-            // ----- 7. KICK (if space was pressed this frame – handled by flag) -----
-            // we use 'space' keydown event to call kick directly, so no need here.
         }
 
-        // ---------- DRAWING ----------
+        // ---------- DRAWING (polished graphics) ----------
         function draw() {
             ctx.clearRect(0, 0, W, H);
 
             // ---- FIELD ----
-            // grass pattern
+            // base grass
             ctx.fillStyle = '#2e7d32';
             ctx.fillRect(0, 0, W, H);
 
-            // subtle stripes
+            // subtle alternating stripes
             ctx.fillStyle = '#3b8f42';
-            for (let i = 0; i < W; i += 60) {
-                ctx.fillRect(i, 0, 30, H);
+            for (let i = 0; i < W; i += 80) {
+                ctx.fillRect(i, 0, 40, H);
             }
 
-            // center circle & line
+            // center circle
             ctx.beginPath();
-            ctx.strokeStyle = '#f0f0d0';
-            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#e8e8d0';
+            ctx.lineWidth = 3.5;
             ctx.arc(W / 2, H / 2, 70, 0, Math.PI * 2);
             ctx.stroke();
 
+            // halfway line
             ctx.beginPath();
-            ctx.moveTo(W / 2, 40);
-            ctx.lineTo(W / 2, H - 40);
-            ctx.strokeStyle = '#f0f0d0';
-            ctx.lineWidth = 3;
+            ctx.moveTo(W / 2, 36);
+            ctx.lineTo(W / 2, H - 36);
+            ctx.strokeStyle = '#e8e8d0';
+            ctx.lineWidth = 3.5;
             ctx.stroke();
 
-            // penalty areas (simple boxes)
-            ctx.strokeStyle = '#f0f0d0';
-            ctx.lineWidth = 2.5;
-            // left penalty
-            ctx.strokeRect(8, H/2 - 110, 90, 220);
-            // right penalty
-            ctx.strokeRect(W - 98, H/2 - 110, 90, 220);
+            // penalty boxes
+            ctx.strokeStyle = '#e8e8d0';
+            ctx.lineWidth = 2.8;
+            ctx.strokeRect(8, H/2 - 115, 95, 230);
+            ctx.strokeRect(W - 103, H/2 - 115, 95, 230);
 
-            // goal areas (small)
-            ctx.strokeStyle = '#e0d6b0';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(8, H/2 - 60, 45, 120);
-            ctx.strokeRect(W - 53, H/2 - 60, 45, 120);
+            // goal areas
+            ctx.strokeStyle = '#d6cca8';
+            ctx.lineWidth = 2.4;
+            ctx.strokeRect(8, H/2 - 60, 48, 120);
+            ctx.strokeRect(W - 56, H/2 - 60, 48, 120);
 
-            // ---- GOALS (nets) ----
-            // Left goal (CPU defends, player scores here?)
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-            ctx.shadowColor = '#fff8e0';
-            ctx.shadowBlur = 10;
-
-            // draw goal posts: left goal line (x = 18)
+            // ---- GOALS ----
+            // Left goal (posts + net)
             ctx.fillStyle = '#c0b28b';
-            ctx.shadowBlur = 0;
-            // left goal top post
-            ctx.fillRect(12, goalTop - 4, 12, 8);
-            // left goal bottom post
-            ctx.fillRect(12, goalBottom - 4, 12, 8);
-            // right goal posts
-            ctx.fillRect(W - 24, goalTop - 4, 12, 8);
-            ctx.fillRect(W - 24, goalBottom - 4, 12, 8);
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = '#fff8e0';
+            ctx.fillRect(14, goalTop - 5, 12, 10);
+            ctx.fillRect(14, goalBottom - 5, 12, 10);
 
-            // goal net lines (decorative)
-            ctx.strokeStyle = '#d4c6a2';
-            ctx.lineWidth = 1.5;
-            for (let y = goalTop; y <= goalBottom; y += 12) {
+            // Right goal posts
+            ctx.fillRect(W - 26, goalTop - 5, 12, 10);
+            ctx.fillRect(W - 26, goalBottom - 5, 12, 10);
+
+            // net lines (decorative)
+            ctx.strokeStyle = '#c4b69a';
+            ctx.lineWidth = 1.6;
+            ctx.shadowBlur = 4;
+            for (let y = goalTop; y <= goalBottom; y += 14) {
                 ctx.beginPath();
-                ctx.moveTo(12, y);
-                ctx.lineTo(30, y);
+                ctx.moveTo(14, y);
+                ctx.lineTo(34, y);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(W - 34, y);
+                ctx.lineTo(W - 14, y);
                 ctx.stroke();
             }
-            for (let y = goalTop; y <= goalBottom; y += 12) {
-                ctx.beginPath();
-                ctx.moveTo(W - 30, y);
-                ctx.lineTo(W - 12, y);
-                ctx.stroke();
-            }
-
-            // shadows off
             ctx.shadowBlur = 0;
 
             // ---- BALL ----
             ctx.shadowColor = 'rgba(0,0,0,0.5)';
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = 12;
             ctx.beginPath();
             ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-            // soccer ball pattern
-            ctx.fillStyle = '#f0f0f0';
+            ctx.fillStyle = '#f8f8f8';
             ctx.fill();
-            ctx.strokeStyle = '#2a2a2a';
+            ctx.strokeStyle = '#1e1e1e';
             ctx.lineWidth = 2.5;
             ctx.stroke();
 
-            // ball details (pentagons / lines)
+            // ball pattern (pentagon-ish)
             ctx.beginPath();
-            ctx.arc(ball.x, ball.y, ball.radius * 0.5, 0, Math.PI * 2);
-            ctx.fillStyle = '#2a2a2a';
+            ctx.arc(ball.x, ball.y, ball.radius * 0.45, 0, Math.PI * 2);
+            ctx.fillStyle = '#1e1e1e';
             ctx.fill();
 
-            // small dots for style
+            // small white highlights
             ctx.fillStyle = '#ffffff';
             ctx.beginPath();
-            ctx.arc(ball.x - 4, ball.y - 4, 3, 0, Math.PI * 2);
+            ctx.arc(ball.x - 4, ball.y - 4, 3.2, 0, Math.PI * 2);
             ctx.fill();
             ctx.beginPath();
-            ctx.arc(ball.x + 4, ball.y - 3, 2.5, 0, Math.PI * 2);
+            ctx.arc(ball.x + 5, ball.y - 3, 2.4, 0, Math.PI * 2);
             ctx.fill();
 
             // ---- PLAYER (blue) ----
-            ctx.shadowColor = 'rgba(0,0,0,0.5)';
-            ctx.shadowBlur = 12;
+            ctx.shadowBlur = 14;
             ctx.beginPath();
             ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
             ctx.fillStyle = player.color;
             ctx.fill();
             ctx.strokeStyle = player.border;
-            ctx.lineWidth = 4;
+            ctx.lineWidth = 4.5;
             ctx.stroke();
 
-            // player eye direction (towards mouse)
+            // player eye (aiming direction)
             const angleToMouse = Math.atan2(mouseY - player.y, mouseX - player.x);
             ctx.beginPath();
-            ctx.arc(player.x + Math.cos(angleToMouse) * 8, player.y + Math.sin(angleToMouse) * 8, 5, 0, Math.PI * 2);
+            ctx.arc(player.x + Math.cos(angleToMouse) * 9, player.y + Math.sin(angleToMouse) * 9, 5.5, 0, Math.PI * 2);
             ctx.fillStyle = '#ffffff';
             ctx.fill();
             ctx.beginPath();
-            ctx.arc(player.x + Math.cos(angleToMouse) * 10, player.y + Math.sin(angleToMouse) * 10, 2.5, 0, Math.PI * 2);
+            ctx.arc(player.x + Math.cos(angleToMouse) * 11, player.y + Math.sin(angleToMouse) * 11, 2.8, 0, Math.PI * 2);
             ctx.fillStyle = '#000000';
             ctx.fill();
 
@@ -548,17 +556,17 @@
             ctx.fillStyle = cpu.color;
             ctx.fill();
             ctx.strokeStyle = cpu.border;
-            ctx.lineWidth = 4;
+            ctx.lineWidth = 4.5;
             ctx.stroke();
 
             // cpu eye (looks at ball)
             const angleToBall = Math.atan2(ball.y - cpu.y, ball.x - cpu.x);
             ctx.beginPath();
-            ctx.arc(cpu.x + Math.cos(angleToBall) * 8, cpu.y + Math.sin(angleToBall) * 8, 5, 0, Math.PI * 2);
+            ctx.arc(cpu.x + Math.cos(angleToBall) * 9, cpu.y + Math.sin(angleToBall) * 9, 5.5, 0, Math.PI * 2);
             ctx.fillStyle = '#ffffff';
             ctx.fill();
             ctx.beginPath();
-            ctx.arc(cpu.x + Math.cos(angleToBall) * 10, cpu.y + Math.sin(angleToBall) * 10, 2.5, 0, Math.PI * 2);
+            ctx.arc(cpu.x + Math.cos(angleToBall) * 11, cpu.y + Math.sin(angleToBall) * 11, 2.8, 0, Math.PI * 2);
             ctx.fillStyle = '#000000';
             ctx.fill();
 
@@ -566,19 +574,25 @@
             ctx.shadowBlur = 0;
             ctx.shadowColor = 'transparent';
 
-            // ---- aim indicator (small crosshair at mouse) ----
+            // ---- aim crosshair ----
             ctx.beginPath();
-            ctx.strokeStyle = '#fff9e0';
-            ctx.lineWidth = 2;
-            ctx.moveTo(mouseX - 10, mouseY);
-            ctx.lineTo(mouseX - 4, mouseY);
-            ctx.moveTo(mouseX + 4, mouseY);
-            ctx.lineTo(mouseX + 10, mouseY);
-            ctx.moveTo(mouseX, mouseY - 10);
-            ctx.lineTo(mouseX, mouseY - 4);
-            ctx.moveTo(mouseX, mouseY + 4);
-            ctx.lineTo(mouseX, mouseY + 10);
+            ctx.strokeStyle = '#fffde7';
+            ctx.lineWidth = 2.4;
+            ctx.moveTo(mouseX - 12, mouseY);
+            ctx.lineTo(mouseX - 5, mouseY);
+            ctx.moveTo(mouseX + 5, mouseY);
+            ctx.lineTo(mouseX + 12, mouseY);
+            ctx.moveTo(mouseX, mouseY - 12);
+            ctx.lineTo(mouseX, mouseY - 5);
+            ctx.moveTo(mouseX, mouseY + 5);
+            ctx.lineTo(mouseX, mouseY + 12);
             ctx.stroke();
+
+            // small dot at center
+            ctx.beginPath();
+            ctx.fillStyle = '#fff9e0';
+            ctx.arc(mouseX, mouseY, 2.5, 0, Math.PI * 2);
+            ctx.fill();
         }
 
         // ---------- GAME LOOP ----------
@@ -596,8 +610,7 @@
                 e.preventDefault();
             }
             if (e.code === 'Space') {
-                e.preventDefault(); // prevent page scroll
-                // perform kick only if not already pressed (avoid autofire)
+                e.preventDefault();
                 if (!keys.space) {
                     keys.space = true;
                     playerKick();
@@ -617,7 +630,7 @@
             }
         });
 
-        // Mouse move for aiming
+        // Mouse aiming
         canvas.addEventListener('mousemove', (e) => {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
@@ -626,24 +639,20 @@
             const rawX = (e.clientX - rect.left) * scaleX;
             const rawY = (e.clientY - rect.top) * scaleY;
 
-            // clamp to canvas area, just in case
             mouseX = Math.min(W, Math.max(0, rawX));
             mouseY = Math.min(H, Math.max(0, rawY));
         });
 
-        // Prevent context menu on canvas (right click)
+        // prevent context menu
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-        // Also allow kick via click? not needed, but could be handy.
-        // We'll stick to spacebar as described.
+        // reset button
+        document.getElementById('resetMatchBtn').addEventListener('click', () => {
+            resetMatch();
+        });
 
-        // ensure mouse leaves canvas gracefully – but keep last position
-
-        // ---------- RESET / INIT ----------
-        // Initial reset to center everything nicely
+        // ---------- INIT ----------
         resetPositions('start');
-
-        // start the loop
         gameLoop();
     })();
 </script>
