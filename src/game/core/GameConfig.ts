@@ -18,6 +18,14 @@ export const GameConfig = {
   camera: {
     lerp: 0.08,
   },
+  kick: {
+    minPower: 4,
+    maxPower: 22,
+    chargeTimeMs: 900,
+    possessionRadius: 40,
+    powerBarWidth: 240,
+    powerBarHeight: 12,
+  },
   sceneKeys: {
     boot: 'BootScene',
     match: 'MatchScene',
