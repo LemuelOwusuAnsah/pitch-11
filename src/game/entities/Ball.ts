@@ -22,6 +22,15 @@ export class Ball {
     this.body.label = 'ball';
   }
 
+  public kick(aimX: number, aimY: number, power: number): void {
+    const len = Math.sqrt(aimX * aimX + aimY * aimY);
+    if (len < 0.001) return;
+    const vx = (aimX / len) * power;
+    const vy = (aimY / len) * power;
+    this.sprite.setVelocity(vx, vy);
+    this.sprite.setAngularVelocity(vx * 0.05);
+  }
+
   public update(): void {
     return;
   }
@@ -30,6 +39,14 @@ export class Ball {
     this.sprite.setPosition(x, y);
     this.sprite.setVelocity(0, 0);
     this.sprite.setAngularVelocity(0);
+  }
+
+  public get x(): number {
+    return this.sprite.x;
+  }
+
+  public get y(): number {
+    return this.sprite.y;
   }
 }
 

@@ -19,6 +19,9 @@ export class MatchScene extends Phaser.Scene {
   private kickoffX = 0;
   private kickoffY = 0;
 
+  private powerBarBg!: Phaser.GameObjects.Graphics;
+  private powerBarFill!: Phaser.GameObjects.Graphics;
+
   constructor() {
     super(GameConfig.sceneKeys.match);
   }
@@ -44,6 +47,7 @@ export class MatchScene extends Phaser.Scene {
     cam.startFollow(this.ball.sprite, true, GameConfig.camera.lerp, GameConfig.camera.lerp);
 
     this.buildWalls();
+    this.buildPowerBar();
   }
 
   private buildWalls(): void {
@@ -73,6 +77,50 @@ export class MatchScene extends Phaser.Scene {
     );
   }
 
+  private buildPowerBar(): void {
+    const w = GameConfig.kick.powerBarWidth;
+    const h = GameConfig.kick.powerBarHeight;
+    this.powerBarBg = this.add.graphics();
+    this.powerBarBg.fillStyle(0x000000, 0.5);
+    this.powerBarBg.fillRoundedRect(-w / 2 - 2, -h / 2 - 2, w + 4, h + 4, 4);
+    this.powerBarBg.setScrollFactor(0);
+    this.powerBarBg.setDepth(1000);
+    this.powerBarBg.setVisible(false);
+
+    this.powerBarFill = this.add.graphics();
+    this.powerBarFill.setScrollFactor(0);
+    this.powerBarFill.setDepth(1001);
+    this.powerBarFill.setVisible(false);
+
+    this.positionPowerBar();
+    this.scale.on('resize', () => this.positionPowerBar());
+  }
+
+  private positionPowerBar(): void {
+    const cam = this.cameras.main;
+    const x = cam.width / 2;
+    const y = cam.height - 40;
+    this.powerBarBg.setPosition(x, y);
+    this.powerBarFill.setPosition(x - GameConfig.kick.powerBarWidth / 2, y);
+  }
+
+  private updatePowerBar(): void {
+    const charging = this.inputSystem.isCharging();
+    this.powerBarBg.setVisible(charging);
+    this.powerBarFill.setVisible(charging);
+    if (!charging) return;
+
+    const ratio = this.inputSystem.getChargeRatio();
+    const w = GameConfig.kick.powerBarWidth;
+    const h = GameConfig.kick.powerBarHeight;
+    const color = ratio < 0.5 ? 0x3fb950 : ratio < 0.85 ? 0xf59e0b : 0xef4444;
+
+    this.powerBarFill.clear();
+    this.powerBarFill.fillStyle(color, 1);
+    const fillWidth = Math.max(1, Math.floor(w * ratio));
+    this.powerBarFill.fillRoundedRect(0, -h / 2, fillWidth, h, 3);
+  }
+
   public update(): void {
     const move = this.inputSystem.getMoveVector();
     const speed = 8;
@@ -80,12 +128,34 @@ export class MatchScene extends Phaser.Scene {
     this.ball.update();
     this.activePlayer.update();
 
-    const bx = this.ball.sprite.x;
-    const by = this.ball.sprite.y;
+    this.handleKick();
+    this.updatePowerBar();
+
+    const bx = this.ball.x;
+    const by = this.ball.y;
 
     if (this.rightGoal.checkBall(bx, by) || bx > PitchWidthPx + 100) {
       this.onGoal();
     }
+  }
+
+  private handleKick(): void {
+    const kick = this.inputSystem.consumeKick();
+    if (!kick) return;
+
+    const px = this.activePlayer.x;
+    const py = this.activePlayer.y;
+    const bx = this.ball.x;
+    const by = this.ball.y;
+    const dist = Math.hypot(bx - px, by - py);
+
+    if (dist > GameConfig.kick.possessionRadius) {
+      return;
+    }
+
+    const aimDx = kick.aim.x - px;
+    const aimDy = kick.aim.y - py;
+    this.ball.kick(aimDx, aimDy, kick.power);
   }
 
   private onGoal(): void {
