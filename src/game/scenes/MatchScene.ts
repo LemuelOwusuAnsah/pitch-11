@@ -11,16 +11,24 @@ declare global {
   }
 }
 
+type Score = { home: number; away: number };
+
 export class MatchScene extends Phaser.Scene {
   private ball!: Ball;
   private activePlayer!: Player;
   private inputSystem!: Input;
+  private leftGoal!: Goal;
   private rightGoal!: Goal;
   private kickoffX = 0;
   private kickoffY = 0;
+  private score: Score = { home: 0, away: 0 };
+  private goalCooldown = false;
 
   private powerBarBg!: Phaser.GameObjects.Graphics;
   private powerBarFill!: Phaser.GameObjects.Graphics;
+  private hudHome!: Phaser.GameObjects.Text;
+  private hudAway!: Phaser.GameObjects.Text;
+  private hudDivider!: Phaser.GameObjects.Text;
 
   constructor() {
     super(GameConfig.sceneKeys.match);
@@ -34,6 +42,7 @@ export class MatchScene extends Phaser.Scene {
     this.kickoffX = cx - 60;
     this.kickoffY = cy;
 
+    this.leftGoal = new Goal(this, 'left', PitchWidthPx, PitchHeightPx);
     this.rightGoal = new Goal(this, 'right', PitchWidthPx, PitchHeightPx);
 
     this.ball = new Ball(this, cx, cy);
@@ -48,14 +57,17 @@ export class MatchScene extends Phaser.Scene {
 
     this.buildWalls();
     this.buildPowerBar();
+    this.buildHud();
   }
 
   private buildWalls(): void {
     const t = 40;
     const W = PitchWidthPx;
     const H = PitchHeightPx;
-    const top = this.rightGoal.mouthTopY;
-    const bottom = this.rightGoal.mouthBottomY;
+    const rTop = this.rightGoal.mouthTopY;
+    const rBottom = this.rightGoal.mouthBottomY;
+    const lTop = this.leftGoal.mouthTopY;
+    const lBottom = this.leftGoal.mouthBottomY;
 
     this.matter.world.add(
       this.matter.bodies.rectangle(W / 2, -t / 2, W + t * 2, t, { isStatic: true })
@@ -63,17 +75,25 @@ export class MatchScene extends Phaser.Scene {
     this.matter.world.add(
       this.matter.bodies.rectangle(W / 2, H + t / 2, W + t * 2, t, { isStatic: true })
     );
+
     this.matter.world.add(
-      this.matter.bodies.rectangle(-t / 2, H / 2, t, H, { isStatic: true })
+      this.matter.bodies.rectangle(-t / 2, lTop / 2, t, lTop, { isStatic: true })
     );
     this.matter.world.add(
-      this.matter.bodies.rectangle(W + t / 2, top / 2, t, top, { isStatic: true })
+      this.matter.bodies.rectangle(-t / 2, lBottom + (H - lBottom) / 2, t, H - lBottom, { isStatic: true })
     );
     this.matter.world.add(
-      this.matter.bodies.rectangle(W + t / 2, bottom + (H - bottom) / 2, t, H - bottom, { isStatic: true })
+      this.matter.bodies.rectangle(-80, H / 2, t, lBottom - lTop + t, { isStatic: true })
+    );
+
+    this.matter.world.add(
+      this.matter.bodies.rectangle(W + t / 2, rTop / 2, t, rTop, { isStatic: true })
     );
     this.matter.world.add(
-      this.matter.bodies.rectangle(W + 80, H / 2, t, bottom - top + t, { isStatic: true })
+      this.matter.bodies.rectangle(W + t / 2, rBottom + (H - rBottom) / 2, t, H - rBottom, { isStatic: true })
+    );
+    this.matter.world.add(
+      this.matter.bodies.rectangle(W + 80, H / 2, t, rBottom - rTop + t, { isStatic: true })
     );
   }
 
@@ -93,7 +113,10 @@ export class MatchScene extends Phaser.Scene {
     this.powerBarFill.setVisible(false);
 
     this.positionPowerBar();
-    this.scale.on('resize', () => this.positionPowerBar());
+    this.scale.on('resize', () => {
+      this.positionPowerBar();
+      this.positionHud();
+    });
   }
 
   private positionPowerBar(): void {
@@ -121,6 +144,34 @@ export class MatchScene extends Phaser.Scene {
     this.powerBarFill.fillRoundedRect(0, -h / 2, fillWidth, h, 3);
   }
 
+  private buildHud(): void {
+    const style = {
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontSize: '22px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    } as const;
+
+    this.hudHome = this.add.text(0, 0, '0', style).setOrigin(0.5).setScrollFactor(0).setDepth(2000);
+    this.hudDivider = this.add.text(0, 0, '–', style).setOrigin(0.5).setScrollFactor(0).setDepth(2000);
+    this.hudAway = this.add.text(0, 0, '0', style).setOrigin(0.5).setScrollFactor(0).setDepth(2000);
+    this.positionHud();
+  }
+
+  private positionHud(): void {
+    const cam = this.cameras.main;
+    const cx = cam.width / 2;
+    const y = 32;
+    this.hudHome.setPosition(cx - 30, y);
+    this.hudDivider.setPosition(cx, y);
+    this.hudAway.setPosition(cx + 30, y);
+  }
+
+  private updateHud(): void {
+    this.hudHome.setText(String(this.score.home));
+    this.hudAway.setText(String(this.score.away));
+  }
+
   public update(): void {
     const move = this.inputSystem.getMoveVector();
     const speed = 8;
@@ -131,11 +182,22 @@ export class MatchScene extends Phaser.Scene {
     this.handleKick();
     this.updatePowerBar();
 
+    if (!this.goalCooldown) {
+      this.checkGoals();
+    }
+  }
+
+  private checkGoals(): void {
     const bx = this.ball.x;
     const by = this.ball.y;
 
-    if (this.rightGoal.checkBall(bx, by) || bx > PitchWidthPx + 100) {
-      this.onGoal();
+    if (this.rightGoal.checkBall(bx, by)) {
+      this.onGoal('home');
+      return;
+    }
+    if (this.leftGoal.checkBall(bx, by)) {
+      this.onGoal('away');
+      return;
     }
   }
 
@@ -158,16 +220,26 @@ export class MatchScene extends Phaser.Scene {
     this.ball.kick(aimDx, aimDy, kick.power);
   }
 
-  private onGoal(): void {
-    console.log('[GOAL] ball crossed the right goal line');
-    const cx = PitchWidthPx / 2;
-    const cy = PitchHeightPx / 2;
-    this.ball.reset(cx, cy);
+  private onGoal(scoringSide: 'home' | 'away'): void {
+    this.goalCooldown = true;
+    if (scoringSide === 'home') {
+      this.score.home += 1;
+    } else {
+      this.score.away += 1;
+    }
+    this.updateHud();
+    console.log('[GOAL]', scoringSide, 'score:', this.score.home, '-', this.score.away);
 
-    this.activePlayer.sprite.setPosition(this.kickoffX, this.kickoffY);
-    this.activePlayer.sprite.setVelocity(0, 0);
-    this.activePlayer.sprite.setAngularVelocity(0);
-    this.activePlayer.update();
+    this.time.delayedCall(1500, () => {
+      const cx = PitchWidthPx / 2;
+      const cy = PitchHeightPx / 2;
+      this.ball.reset(cx, cy);
+      this.activePlayer.sprite.setPosition(this.kickoffX, this.kickoffY);
+      this.activePlayer.sprite.setVelocity(0, 0);
+      this.activePlayer.sprite.setAngularVelocity(0);
+      this.activePlayer.update();
+      this.goalCooldown = false;
+    });
   }
 
   private drawPitch(): void {
