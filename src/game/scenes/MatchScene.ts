@@ -22,7 +22,9 @@ export class MatchScene extends Phaser.Scene {
   private ball!: Ball;
   private activePlayer!: Player;
   private homePlayers: Player[] = [];
+  private awayPlayers: Player[] = [];
   private homeSlots: FormationSlot[] = [];
+  private awaySlots: FormationSlot[] = [];
   private inputSystem!: Input;
   private leftGoal!: Goal;
   private rightGoal!: Goal;
@@ -50,20 +52,24 @@ export class MatchScene extends Phaser.Scene {
 
     this.ball = new Ball(this, cx, cy);
 
-    const placements = placeFormation(
-      Formation442,
-      'home',
-      { widthPx: PitchWidthPx, heightPx: PitchHeightPx },
-      120
-    );
-    this.homeSlots = placements.map((p) => ({ pos: p.pos }));
+    const pitch = { widthPx: PitchWidthPx, heightPx: PitchHeightPx };
+    const homePlacements = placeFormation(Formation442, 'home', pitch, 120);
+    const awayPlacements = placeFormation(Formation442, 'away', pitch, 120);
 
-    const startIdx = this.findClosestSlotToBall(cx, cy);
-    this.homePlayers = placements.map((p, i) => {
+    this.homeSlots = homePlacements.map((p) => ({ pos: p.pos }));
+    this.awaySlots = awayPlacements.map((p) => ({ pos: p.pos }));
+
+    const startIdx = this.findClosestSlotToBall(this.homeSlots, cx, cy);
+    this.homePlayers = homePlacements.map((p, i) => {
       const isActive = i === startIdx;
       const player = new Player(this, p.pos.x, p.pos.y, 'home-' + i, 'home', i + 1);
       player.setActive(isActive);
       if (isActive) this.activePlayer = player;
+      return player;
+    });
+
+    this.awayPlayers = awayPlacements.map((p, i) => {
+      const player = new Player(this, p.pos.x, p.pos.y, 'away-' + i, 'away', i + 1);
       return player;
     });
 
@@ -78,11 +84,11 @@ export class MatchScene extends Phaser.Scene {
     this.buildHud();
   }
 
-  private findClosestSlotToBall(bx: number, by: number): number {
+  private findClosestSlotToBall(slots: FormationSlot[], bx: number, by: number): number {
     let best = 0;
     let bestDist = Infinity;
-    for (let i = 0; i < this.homeSlots.length; i++) {
-      const slot = this.homeSlots[i];
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
       if (!slot) continue;
       const d = distance({ x: bx, y: by }, slot.pos);
       if (d < bestDist) {
@@ -187,9 +193,11 @@ export class MatchScene extends Phaser.Scene {
     const speed = 8;
     this.activePlayer.setVelocity(move.x * speed, move.y * speed);
 
-    this.updateAi();
+    this.updateHomeAi();
+    this.updateAwayAi();
     this.ball.update();
     this.homePlayers.forEach((p) => p.update());
+    this.awayPlayers.forEach((p) => p.update());
 
     this.handleKick();
     this.updatePowerBar();
@@ -199,19 +207,10 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
-  private updateAi(): void {
+  private updateHomeAi(): void {
     const ballPos = { x: this.ball.x, y: this.ball.y };
-    let nearestIdx = -1;
-    let nearestDist = Infinity;
-    for (let i = 0; i < this.homePlayers.length; i++) {
-      const p = this.homePlayers[i];
-      if (!p || p.isActive) continue;
-      const d = distance({ x: p.x, y: p.y }, ballPos);
-      if (d < nearestDist) {
-        nearestDist = d;
-        nearestIdx = i;
-      }
-    }
+    const activePos = { x: this.activePlayer.x, y: this.activePlayer.y };
+    const nearestIdx = this.findNearest(ballPos);
     for (let i = 0; i < this.homePlayers.length; i++) {
       const p = this.homePlayers[i];
       const slot = this.homeSlots[i];
@@ -220,12 +219,62 @@ export class MatchScene extends Phaser.Scene {
         playerPos: { x: p.x, y: p.y },
         formationTarget: slot.pos,
         ballPos,
-        activePlayerPos: { x: this.activePlayer.x, y: this.activePlayer.y },
+        activePlayerPos: activePos,
         isNearestToBall: i === nearestIdx,
         speed: 8,
       });
       p.setVelocity(out.vx, out.vy);
     }
+  }
+
+  private updateAwayAi(): void {
+    const ballPos = { x: this.ball.x, y: this.ball.y };
+    const noActive = { x: -10000, y: -10000 };
+    const nearestIdx = this.findNearestAway(ballPos);
+    for (let i = 0; i < this.awayPlayers.length; i++) {
+      const p = this.awayPlayers[i];
+      const slot = this.awaySlots[i];
+      if (!p || !slot) continue;
+      const out = computeAiVelocity({
+        playerPos: { x: p.x, y: p.y },
+        formationTarget: slot.pos,
+        ballPos,
+        activePlayerPos: noActive,
+        isNearestToBall: i === nearestIdx,
+        speed: 8,
+      });
+      p.setVelocity(out.vx, out.vy);
+    }
+  }
+
+  private findNearest(ballPos: { x: number; y: number }): number {
+    let best = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < this.homePlayers.length; i++) {
+      const p = this.homePlayers[i];
+      if (!p || p.isActive) continue;
+      const d = distance({ x: p.x, y: p.y }, ballPos);
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  private findNearestAway(ballPos: { x: number; y: number }): number {
+    let best = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < this.awayPlayers.length; i++) {
+      const p = this.awayPlayers[i];
+      if (!p) continue;
+      const d = distance({ x: p.x, y: p.y }, ballPos);
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    }
+    return best;
   }
 
   private checkGoals(): void {
@@ -261,12 +310,21 @@ export class MatchScene extends Phaser.Scene {
   }
 
   private resetPositions(): void {
-    const cx = PitchWidthPx / 2;
-    const cy = PitchHeightPx / 2;
-    this.ball.reset(cx, cy);
+    this.ball.reset(PitchWidthPx / 2, PitchHeightPx / 2);
+
     for (let i = 0; i < this.homePlayers.length; i++) {
       const p = this.homePlayers[i];
       const slot = this.homeSlots[i];
+      if (!p || !slot) continue;
+      p.sprite.setPosition(slot.pos.x, slot.pos.y);
+      p.sprite.setVelocity(0, 0);
+      p.sprite.setAngularVelocity(0);
+      p.update();
+    }
+
+    for (let i = 0; i < this.awayPlayers.length; i++) {
+      const p = this.awayPlayers[i];
+      const slot = this.awaySlots[i];
       if (!p || !slot) continue;
       p.sprite.setPosition(slot.pos.x, slot.pos.y);
       p.sprite.setVelocity(0, 0);
